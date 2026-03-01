@@ -1,0 +1,15 @@
+/dashboard
+.env*.local
+.env
+
+# Google Service Account credentials (NEVER commit this!)
+service_account.json
+
+# Other sensitive JSON files (but allow config files)
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!tailwind.config.js
+!postcss.config.js
+!next.config.mjs
