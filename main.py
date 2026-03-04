@@ -65,9 +65,22 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="AI Outreach Automation", lifespan=lifespan)
 
 # Add CORS middleware to allow frontend to connect
+# Get allowed origins from environment or use defaults
+import os
+allowed_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://ai-automation-front.vercel.app",
+    "https://ai-automation-front.onrender.com",
+]
+
+# Add any additional origins from environment variable
+if os.getenv("ALLOWED_ORIGINS"):
+    allowed_origins.extend(os.getenv("ALLOWED_ORIGINS").split(","))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # Next.js default ports
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -19,11 +19,30 @@ async def import_leads(db: AsyncSession = Depends(get_db)) -> ImportLeadsResult:
     try:
         rows = list(fetch_leads_from_sheet())
     except ValueError as e:
+        # User-friendly validation errors
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except FileNotFoundError as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to fetch leads from Google Sheet: {str(e)}"
+            detail=f"Service account file not found: {str(e)}. Please check GOOGLE_SERVICE_ACCOUNT_FILE environment variable."
+        )
+    except Exception as e:
+        # Log the full error for debugging, but return user-friendly message
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Import leads error: {error_trace}")  # TODO: Use proper logging
+        
+        error_msg = str(e)
+        if "service_account" in error_msg.lower() or "credentials" in error_msg.lower():
+            error_msg = "Google service account configuration error. Check GOOGLE_SERVICE_ACCOUNT_FILE path and credentials."
+        elif "permission" in error_msg.lower() or "403" in error_msg:
+            error_msg = "Permission denied. Ensure the Google Sheet is shared with the service account."
+        elif "not found" in error_msg.lower() or "404" in error_msg:
+            error_msg = "Google Sheet not found. Check GOOGLE_SHEETS_ID environment variable."
+        
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch leads from Google Sheet: {error_msg}"
         )
     if not rows:
         return ImportLeadsResult(inserted=0, skipped_duplicates=0)
