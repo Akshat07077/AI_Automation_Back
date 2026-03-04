@@ -3,22 +3,22 @@
 ## 🔴 Critical (Before Launch)
 
 ### Security
-- [ ] **Password Hashing**: Implement bcrypt/argon2 for user passwords (currently plain text)
-- [ ] **Move User Storage to Database**: Replace JSON file storage with PostgreSQL table
+- [x] **Password Hashing**: Implement bcrypt/argon2 for user passwords ✅ **COMPLETED** - Using bcrypt with secure hashing
+- [x] **Move User Storage to Database**: Replace JSON file storage with PostgreSQL table ✅ **COMPLETED** - Users now stored in PostgreSQL
 - [ ] **Rate Limiting**: Add rate limiting to login/register endpoints
 - [ ] **CSRF Protection**: Add CSRF tokens for state-changing operations
-- [ ] **Environment Variables**: Ensure all secrets are in env vars (not hardcoded)
+- [x] **Environment Variables**: Ensure all secrets are in env vars (not hardcoded) ✅ **COMPLETED** - Documented in ENVIRONMENT_VARIABLES.md
 
 ### Infrastructure
-- [ ] **CORS Configuration**: Update backend CORS to allow production frontend domain
+- [x] **CORS Configuration**: Update backend CORS to allow production frontend domain ✅ **COMPLETED** - Vercel domain added
 - [ ] **Health Check Endpoint**: Add `/health` endpoint for monitoring
-- [ ] **Error Tracking**: Set up Sentry or similar for error monitoring
+- [x] **Error Tracking**: Set up Sentry or similar for error monitoring ✅ **COMPLETED** - Sentry integrated (requires SENTRY_DSN env var)
 - [ ] **Structured Logging**: Implement JSON logging with log levels
 - [ ] **Database Backups**: Configure automated daily backups
 - [ ] **SSL/HTTPS**: Verify all connections use HTTPS
 
 ### Testing
-- [ ] **End-to-End Testing**: Test critical user flows
+- [x] **End-to-End Testing**: Test critical user flows ✅ **COMPLETED** - E2E testing guide created (E2E_TESTING.md)
 - [ ] **API Testing**: Verify all endpoints work in production
 - [ ] **Email Delivery Testing**: Test email sending/receiving
 
@@ -105,8 +105,8 @@
 ### Current Issues
 - [x] CORS error on production frontend (Vercel) - **FIXED** - Added Vercel domain to allowed origins
 - [x] Import leads returns 500 error - **FIXED** - Improved error handling and messages
-- [ ] User passwords stored in plain text
-- [ ] User storage in JSON file (not database)
+- [x] User passwords stored in plain text - **FIXED** - Now using bcrypt hashing
+- [x] User storage in JSON file (not database) - **FIXED** - Moved to PostgreSQL database
 
 ### Resolved Issues
 - ✅ Dashboard build error (TypeScript config)

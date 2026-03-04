@@ -48,7 +48,9 @@ class Settings(BaseSettings):
     # Google Sheets
     google_sheets_id: str = Field(..., alias="GOOGLE_SHEETS_ID")
     google_sheets_worksheet: str = Field("Leads", alias="GOOGLE_SHEETS_WORKSHEET")
-    google_service_account_file: str = Field(..., alias="GOOGLE_SERVICE_ACCOUNT_FILE")
+    # Service account: either JSON string from env var OR file path
+    google_service_account_json: str | None = Field(None, alias="GOOGLE_SERVICE_ACCOUNT_JSON")
+    google_service_account_file: str | None = Field(None, alias="GOOGLE_SERVICE_ACCOUNT_FILE")
 
     # Gemini
     gemini_api_key: str = Field(..., alias="GEMINI_API_KEY")

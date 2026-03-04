@@ -146,8 +146,8 @@ async def get_activity_summary(
     
     start_date = datetime.now(timezone.utc) - timedelta(days=days)
     
-    # Count by event type
-    sent_count = await db.execute(
+    # Count by event type - extract scalar values immediately
+    sent_result = await db.execute(
         select(func.count()).where(
             and_(
                 OutreachLog.event_type == OutreachEventType.SENT,
@@ -155,8 +155,9 @@ async def get_activity_summary(
             )
         )
     )
+    sent = sent_result.scalar() or 0
     
-    follow_up_count = await db.execute(
+    follow_up_result = await db.execute(
         select(func.count()).where(
             and_(
                 OutreachLog.event_type == OutreachEventType.FOLLOW_UP,
@@ -164,8 +165,9 @@ async def get_activity_summary(
             )
         )
     )
+    follow_ups = follow_up_result.scalar() or 0
     
-    replied_count = await db.execute(
+    replied_result = await db.execute(
         select(func.count()).where(
             and_(
                 OutreachLog.event_type == OutreachEventType.REPLIED,
@@ -173,8 +175,9 @@ async def get_activity_summary(
             )
         )
     )
+    replied = replied_result.scalar() or 0
     
-    bounce_count = await db.execute(
+    bounce_result = await db.execute(
         select(func.count()).where(
             and_(
                 OutreachLog.event_type == OutreachEventType.BOUNCE,
@@ -182,12 +185,13 @@ async def get_activity_summary(
             )
         )
     )
+    bounced = bounce_result.scalar() or 0
     
     return {
         "period_days": days,
-        "sent": sent_count.scalar() or 0,
-        "follow_ups": follow_up_count.scalar() or 0,
-        "replied": replied_count.scalar() or 0,
-        "bounced": bounce_count.scalar() or 0,
-        "total": (sent_count.scalar() or 0) + (follow_up_count.scalar() or 0) + (replied_count.scalar() or 0) + (bounce_count.scalar() or 0),
+        "sent": sent,
+        "follow_ups": follow_ups,
+        "replied": replied,
+        "bounced": bounced,
+        "total": sent + follow_ups + replied + bounced,
     }

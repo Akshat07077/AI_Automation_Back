@@ -1,8 +1,12 @@
 from contextlib import asynccontextmanager, suppress
 import asyncio
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
 from app.api.routes.import_leads import router as import_leads_router
 from app.api.routes.leads import router as leads_router
@@ -12,6 +16,7 @@ from app.api.routes.follow_ups import router as follow_ups_router
 from app.api.routes.activity_log import router as activity_log_router
 from app.api.routes.stats import router as stats_router
 from app.api.routes.test_email import router as test_email_router
+from app.api.routes.users import router as users_router
 from app.core.config import get_settings
 from app.db.session import AsyncSessionLocal, init_db
 from app.services.imap_watcher import process_imap_replies
@@ -19,6 +24,20 @@ from app.services.follow_up import process_scheduled_follow_ups
 
 
 settings = get_settings()
+
+# Initialize Sentry error tracking if DSN is provided
+sentry_dsn = os.getenv("SENTRY_DSN")
+if sentry_dsn:
+    sentry_sdk.init(
+        dsn=sentry_dsn,
+        integrations=[
+            FastApiIntegration(transaction_style="endpoint"),
+            SqlalchemyIntegration(),
+        ],
+        traces_sample_rate=0.1,  # 10% of transactions for performance monitoring
+        profiles_sample_rate=0.1,  # 10% of transactions for profiling
+        environment=os.getenv("ENVIRONMENT", "production"),
+    )
 
 
 @asynccontextmanager
@@ -100,4 +119,5 @@ app.include_router(follow_ups_router)
 app.include_router(activity_log_router)
 app.include_router(stats_router)
 app.include_router(test_email_router)
+app.include_router(users_router)
 

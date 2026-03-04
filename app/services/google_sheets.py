@@ -1,4 +1,6 @@
 from typing import Iterable
+import json
+import os
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -16,10 +18,38 @@ SCOPES = [
 
 
 def get_gspread_client() -> gspread.Client:
-    creds = Credentials.from_service_account_file(
-        settings.google_service_account_file,
-        scopes=SCOPES,
-    )
+    """
+    Get gspread client using service account credentials.
+    Supports both JSON from environment variable and file path.
+    """
+    # Priority: 1. JSON from env var, 2. File path
+    if settings.google_service_account_json:
+        # Parse JSON from environment variable
+        try:
+            service_account_info = json.loads(settings.google_service_account_json)
+            creds = Credentials.from_service_account_info(
+                service_account_info,
+                scopes=SCOPES,
+            )
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Invalid JSON in GOOGLE_SERVICE_ACCOUNT_JSON: {str(e)}"
+            )
+    elif settings.google_service_account_file:
+        # Use file path
+        if not os.path.exists(settings.google_service_account_file):
+            raise FileNotFoundError(
+                f"Service account file not found: {settings.google_service_account_file}"
+            )
+        creds = Credentials.from_service_account_file(
+            settings.google_service_account_file,
+            scopes=SCOPES,
+        )
+    else:
+        raise ValueError(
+            "Either GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_FILE must be set"
+        )
+    
     return gspread.authorize(creds)
 
 
