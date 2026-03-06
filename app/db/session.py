@@ -59,12 +59,17 @@ else:
     connect_args = {"ssl": False}
     print(f"   SSL: Disabled (default)")
 
+# Add connection timeout to connect_args for asyncpg
+if "timeout" not in connect_args:
+    connect_args["command_timeout"] = 10  # 10 second timeout for queries
+
 engine = create_async_engine(
     settings.database_url,
     echo=False,
     future=True,
     poolclass=NullPool,  # Use NullPool to avoid parameter passing issues
     connect_args=connect_args,
+    pool_pre_ping=True,  # Verify connections before using
 )
 
 AsyncSessionLocal = async_sessionmaker(
