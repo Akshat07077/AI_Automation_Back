@@ -77,14 +77,30 @@ def fetch_leads_from_sheet() -> Iterable[dict]:
             f"3. Service account has 'Viewer' access to the sheet"
         )
     except gspread.exceptions.APIError as e:
-        if e.response.status_code == 403:
+        status_code = e.response.status_code if hasattr(e, 'response') and e.response else None
+        if status_code == 403:
             raise ValueError(
                 f"Permission denied. Please:\n"
-                f"1. Share the sheet with: ai-auto@robust-chess-427018-j2.iam.gserviceaccount.com\n"
+                f"1. Share the sheet with the service account email\n"
                 f"2. Give it 'Viewer' access\n"
                 f"3. Make sure Google Sheets API is enabled in your project"
             )
-        raise
+        elif status_code == 404:
+            raise ValueError(
+                f"Google Sheet not found. Please check:\n"
+                f"1. Sheet ID is correct: {settings.google_sheets_id}\n"
+                f"2. Sheet exists and is accessible"
+            )
+        else:
+            # Convert other API errors to ValueError for better error handling
+            error_msg = str(e)
+            raise ValueError(
+                f"Google Sheets API error (status {status_code}): {error_msg}\n"
+                f"Check:\n"
+                f"1. Google Sheets API is enabled\n"
+                f"2. Service account has proper permissions\n"
+                f"3. Sheet ID is correct"
+            )
     
     # Try to get the worksheet, with helpful error if not found
     try:

@@ -65,13 +65,21 @@ async def import_leads(db: AsyncSession = Depends(get_db)) -> ImportLeadsResult:
         rows = list(fetch_leads_from_sheet())
     except ValueError as e:
         # User-friendly validation errors
-        raise HTTPException(status_code=400, detail=str(e))
+        error_msg = str(e)
+        print(f"=== IMPORT LEADS 400 ERROR ===")
+        print(f"ValueError: {error_msg}")
+        print(f"Using JSON from env: {settings.google_service_account_json is not None}")
+        print(f"Service Account File: {settings.google_service_account_file}")
+        print(f"Google Sheets ID: {settings.google_sheets_id}")
+        print(f"Google Sheets Worksheet: {settings.google_sheets_worksheet}")
+        print(f"=============================")
+        raise HTTPException(status_code=400, detail=error_msg)
     except FileNotFoundError as e:
         raise HTTPException(
             status_code=500,
             detail=(
                 f"Service account file not found: {str(e)}\n"
-                f"Current path: {service_account_path}\n"
+                f"Current path: {settings.google_service_account_file}\n"
                 f"Please check GOOGLE_SERVICE_ACCOUNT_FILE environment variable."
             )
         )

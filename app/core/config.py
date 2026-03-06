@@ -9,6 +9,8 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
+        # Allow parsing of complex values like JSON strings
+        env_ignore_empty=True,
     )
 
     # Database
