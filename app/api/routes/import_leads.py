@@ -48,16 +48,42 @@ async def import_leads(db: AsyncSession = Depends(get_db)) -> ImportLeadsResult:
             )
         )
     
-    # If using JSON, validate it
+    # If using JSON, validate it and check required fields
     if settings.google_service_account_json:
         try:
-            json.loads(settings.google_service_account_json)
+            service_account_data = json.loads(settings.google_service_account_json)
+            
+            # Check for required fields
+            required_fields = ["type", "project_id", "private_key", "client_email"]
+            missing_fields = [f for f in required_fields if f not in service_account_data]
+            
+            if missing_fields:
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        f"Service account JSON missing required fields: {', '.join(missing_fields)}\n"
+                        f"Please ensure your GOOGLE_SERVICE_ACCOUNT_JSON contains all required fields."
+                    )
+                )
+            
+            # Log success (without sensitive data)
+            print(f"✅ Service account JSON validated successfully")
+            print(f"   Project ID: {service_account_data.get('project_id', 'N/A')}")
+            print(f"   Client Email: {service_account_data.get('client_email', 'N/A')}")
+            
         except json.JSONDecodeError as e:
+            json_preview = settings.google_service_account_json[:100] if settings.google_service_account_json else ""
             raise HTTPException(
                 status_code=500,
                 detail=(
-                    f"Invalid JSON in GOOGLE_SERVICE_ACCOUNT_JSON: {str(e)}\n"
-                    f"Please ensure the JSON is valid and properly escaped."
+                    f"Invalid JSON in GOOGLE_SERVICE_ACCOUNT_JSON.\n"
+                    f"Error: {str(e)}\n"
+                    f"JSON preview: {json_preview}...\n"
+                    f"Please ensure:\n"
+                    f"1. JSON is valid (use json validator)\n"
+                    f"2. JSON is on a single line (no line breaks)\n"
+                    f"3. All quotes are properly escaped\n"
+                    f"4. The entire JSON is wrapped in single quotes in .env file"
                 )
             )
     

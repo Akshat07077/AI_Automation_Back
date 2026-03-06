@@ -27,13 +27,35 @@ def get_gspread_client() -> gspread.Client:
         # Parse JSON from environment variable
         try:
             service_account_info = json.loads(settings.google_service_account_json)
+            
+            # Validate required fields
+            if "private_key" not in service_account_info:
+                raise ValueError(
+                    "Service account JSON missing 'private_key' field. "
+                    "Please check your GOOGLE_SERVICE_ACCOUNT_JSON."
+                )
+            if "client_email" not in service_account_info:
+                raise ValueError(
+                    "Service account JSON missing 'client_email' field. "
+                    "Please check your GOOGLE_SERVICE_ACCOUNT_JSON."
+                )
+            
             creds = Credentials.from_service_account_info(
                 service_account_info,
                 scopes=SCOPES,
             )
+            print(f"✅ Service account credentials loaded from JSON")
         except json.JSONDecodeError as e:
             raise ValueError(
-                f"Invalid JSON in GOOGLE_SERVICE_ACCOUNT_JSON: {str(e)}"
+                f"Invalid JSON in GOOGLE_SERVICE_ACCOUNT_JSON: {str(e)}\n"
+                f"Make sure the JSON is valid and properly formatted."
+            )
+        except Exception as e:
+            # Catch any other credential errors
+            error_type = type(e).__name__
+            raise ValueError(
+                f"Failed to create credentials from JSON: {error_type}: {str(e)}\n"
+                f"Check that your service account JSON is complete and correct."
             )
     elif settings.google_service_account_file:
         # Use file path
