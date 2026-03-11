@@ -17,6 +17,7 @@ from app.api.routes.activity_log import router as activity_log_router
 from app.api.routes.stats import router as stats_router
 from app.api.routes.test_email import router as test_email_router
 from app.api.routes.users import router as users_router
+from app.api.routes.google_auth import router as google_auth_router
 from app.core.config import get_settings
 from app.db.session import AsyncSessionLocal, init_db
 from app.services.imap_watcher import process_imap_replies
@@ -120,4 +121,4 @@ app.include_router(activity_log_router)
 app.include_router(stats_router)
 app.include_router(test_email_router)
 app.include_router(users_router)
-
+app.include_router(google_auth_router)

@@ -117,10 +117,58 @@ async def migrate_outreach_logs_message_id() -> None:
         """))
 
 
+async def migrate_users_google_oauth() -> None:
+    """
+    Add Google OAuth columns to users table.
+    """
+    async with engine.begin() as conn:
+        await conn.execute(text("""
+            DO $$ 
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'users' AND column_name = 'google_access_token'
+                ) THEN
+                    ALTER TABLE users ADD COLUMN google_access_token VARCHAR;
+                END IF;
+                
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'users' AND column_name = 'google_refresh_token'
+                ) THEN
+                    ALTER TABLE users ADD COLUMN google_refresh_token VARCHAR;
+                END IF;
+                
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'users' AND column_name = 'token_expiry'
+                ) THEN
+                    ALTER TABLE users ADD COLUMN token_expiry TIMESTAMP WITH TIME ZONE;
+                END IF;
+                
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'users' AND column_name = 'google_email'
+                ) THEN
+                    ALTER TABLE users ADD COLUMN google_email VARCHAR(255);
+                END IF;
+                
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'users' AND column_name = 'google_sheet_id'
+                ) THEN
+                    ALTER TABLE users ADD COLUMN google_sheet_id VARCHAR(255);
+                END IF;
+            END $$;
+        """))
+
+
 async def run_migrations() -> None:
     """Run all pending migrations."""
     await migrate_outreach_logs()
     await migrate_lead_follow_ups()
     await migrate_outreach_logs_event_type()
     await migrate_outreach_logs_message_id()
-    print("✓ Database migrations completed successfully")
+    await migrate_users_google_oauth()
+    print("Database migrations completed successfully")
+

@@ -33,7 +33,7 @@ is_local = any(host in database_url_lower for host in [
 ])
 
 # Debug: Print connection info
-print(f"🔍 Database Connection Info:")
+print(f"Database Connection Info:")
 print(f"   URL (masked): {settings.database_url[:50]}...")
 print(f"   Is Local: {is_local}")
 print(f"   Is Cloud: {is_cloud_db}")
@@ -94,11 +94,11 @@ async def init_db() -> None:
         # Run migrations to add any missing columns
         from app.db.migrations import run_migrations
         await run_migrations()
-        print("✅ Database initialized successfully")
+        print("Database initialized successfully")
     except Exception as e:
         error_type = type(e).__name__
         error_msg = str(e)
-        print(f"❌ Database initialization failed:")
+        print(f"Database initialization failed:")
         print(f"   Error Type: {error_type}")
         print(f"   Error: {error_msg}")
         print()

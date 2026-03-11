@@ -3,179 +3,46 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.models.user import User
 from app.models.lead import Lead, LeadStatus
 from app.schemas.lead import ImportLeadsResult
 from app.services.google_sheets import fetch_leads_from_sheet
-
+from app.api.routes.google_auth import get_current_user
 
 router = APIRouter(tags=["leads"])
 
-
 @router.post("/import-leads", response_model=ImportLeadsResult)
-async def import_leads(db: AsyncSession = Depends(get_db)) -> ImportLeadsResult:
+async def import_leads(
+    user: User = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_db)
+) -> ImportLeadsResult:
     """
     Import leads from the configured Google Sheet, avoiding duplicates by email.
     """
-    import os
-    import traceback
-    import json
-    from app.core.config import get_settings
-    
-    settings = get_settings()
-    
-    # Check service account configuration
-    if not settings.google_service_account_json and not settings.google_service_account_file:
+    # Check if user has connected Google
+    if not user.google_access_token:
         raise HTTPException(
-            status_code=500,
-            detail=(
-                "Service account not configured.\n"
-                "Please set either:\n"
-                "1. GOOGLE_SERVICE_ACCOUNT_JSON (recommended) - Full JSON as string\n"
-                "2. GOOGLE_SERVICE_ACCOUNT_FILE - Path to JSON file"
-            )
+            status_code=400,
+            detail="Google account not connected. Please connect your Google account in Settings."
         )
     
-    # If using file, check if it exists
-    if settings.google_service_account_file and not os.path.exists(settings.google_service_account_file):
+    # Check if a sheet is selected
+    if not user.google_sheet_id:
         raise HTTPException(
-            status_code=500,
-            detail=(
-                f"Service account file not found at: {settings.google_service_account_file}\n"
-                f"Please check:\n"
-                f"1. GOOGLE_SERVICE_ACCOUNT_FILE path is correct\n"
-                f"2. File exists at the specified path\n"
-                f"3. Or use GOOGLE_SERVICE_ACCOUNT_JSON instead (recommended)"
-            )
+            status_code=400,
+            detail="No Google Sheet selected. Please select a sheet in Settings."
         )
-    
-    # If using JSON, validate it and check required fields
-    if settings.google_service_account_json:
-        try:
-            service_account_data = json.loads(settings.google_service_account_json)
-            
-            # Check for required fields
-            required_fields = ["type", "project_id", "private_key", "client_email"]
-            missing_fields = [f for f in required_fields if f not in service_account_data]
-            
-            if missing_fields:
-                raise HTTPException(
-                    status_code=500,
-                    detail=(
-                        f"Service account JSON missing required fields: {', '.join(missing_fields)}\n"
-                        f"Please ensure your GOOGLE_SERVICE_ACCOUNT_JSON contains all required fields."
-                    )
-                )
-            
-            # Log success (without sensitive data)
-            print(f"✅ Service account JSON validated successfully")
-            print(f"   Project ID: {service_account_data.get('project_id', 'N/A')}")
-            print(f"   Client Email: {service_account_data.get('client_email', 'N/A')}")
-            
-        except json.JSONDecodeError as e:
-            json_preview = settings.google_service_account_json[:100] if settings.google_service_account_json else ""
-            raise HTTPException(
-                status_code=500,
-                detail=(
-                    f"Invalid JSON in GOOGLE_SERVICE_ACCOUNT_JSON.\n"
-                    f"Error: {str(e)}\n"
-                    f"JSON preview: {json_preview}...\n"
-                    f"Please ensure:\n"
-                    f"1. JSON is valid (use json validator)\n"
-                    f"2. JSON is on a single line (no line breaks)\n"
-                    f"3. All quotes are properly escaped\n"
-                    f"4. The entire JSON is wrapped in single quotes in .env file"
-                )
-            )
     
     try:
-        rows = list(fetch_leads_from_sheet())
+        rows = list(fetch_leads_from_sheet(user, user.google_sheet_id))
     except ValueError as e:
-        # User-friendly validation errors
-        error_msg = str(e)
-        print(f"=== IMPORT LEADS 400 ERROR ===")
-        print(f"ValueError: {error_msg}")
-        print(f"Using JSON from env: {settings.google_service_account_json is not None}")
-        print(f"Service Account File: {settings.google_service_account_file}")
-        print(f"Google Sheets ID: {settings.google_sheets_id}")
-        print(f"Google Sheets Worksheet: {settings.google_sheets_worksheet}")
-        print(f"=============================")
-        raise HTTPException(status_code=400, detail=error_msg)
-    except FileNotFoundError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                f"Service account file not found: {str(e)}\n"
-                f"Current path: {settings.google_service_account_file}\n"
-                f"Please check GOOGLE_SERVICE_ACCOUNT_FILE environment variable."
-            )
-        )
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        # Log the full error for debugging
+        import traceback
         error_trace = traceback.format_exc()
-        error_type = type(e).__name__
-        error_msg = str(e)
-        
-        # Print full error for server logs
         print(f"=== IMPORT LEADS ERROR ===")
-        print(f"Error Type: {error_type}")
-        print(f"Error Message: {error_msg}")
-        print(f"Using JSON from env: {settings.google_service_account_json is not None}")
-        print(f"Service Account File: {settings.google_service_account_file}")
-        print(f"Google Sheets ID: {settings.google_sheets_id}")
-        print(f"Traceback:\n{error_trace}")
-        print(f"=========================")
-        
-        # Return detailed error message
-        if "service_account" in error_msg.lower() or "credentials" in error_msg.lower() or "json" in error_msg.lower():
-            if settings.google_service_account_json:
-                detail_msg = (
-                    f"Google service account configuration error.\n"
-                    f"Error: {error_msg}\n"
-                    f"Check:\n"
-                    f"1. GOOGLE_SERVICE_ACCOUNT_JSON contains valid JSON\n"
-                    f"2. JSON is properly escaped (no line breaks, use \\n for newlines)\n"
-                    f"3. Service account credentials are correct"
-                )
-            else:
-                detail_msg = (
-                    f"Google service account configuration error.\n"
-                    f"Error: {error_msg}\n"
-                    f"Check:\n"
-                    f"1. GOOGLE_SERVICE_ACCOUNT_FILE path: {settings.google_service_account_file}\n"
-                    f"2. File is valid JSON\n"
-                    f"3. Service account credentials are correct\n"
-                    f"4. Consider using GOOGLE_SERVICE_ACCOUNT_JSON instead (recommended)"
-                )
-        elif "permission" in error_msg.lower() or "403" in error_msg or "forbidden" in error_msg.lower():
-            detail_msg = (
-                f"Permission denied accessing Google Sheet.\n"
-                f"Error: {error_msg}\n"
-                f"Check:\n"
-                f"1. Sheet is shared with service account\n"
-                f"2. Service account has 'Viewer' access\n"
-                f"3. Google Sheets API is enabled"
-            )
-        elif "not found" in error_msg.lower() or "404" in error_msg:
-            detail_msg = (
-                f"Google Sheet not found.\n"
-                f"Error: {error_msg}\n"
-                f"Check:\n"
-                f"1. GOOGLE_SHEETS_ID: {settings.google_sheets_id}\n"
-                f"2. Sheet ID is correct\n"
-                f"3. Sheet exists and is accessible"
-            )
-        else:
-            detail_msg = (
-                f"Failed to fetch leads from Google Sheet.\n"
-                f"Error Type: {error_type}\n"
-                f"Error: {error_msg}\n"
-                f"Check server logs for full traceback."
-            )
-        
-        raise HTTPException(
-            status_code=500,
-            detail=detail_msg
-        )
+        print(error_trace)
+        raise HTTPException(status_code=500, detail=str(e))
     if not rows:
         return ImportLeadsResult(inserted=0, skipped_duplicates=0)
 

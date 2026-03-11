@@ -48,11 +48,17 @@ class Settings(BaseSettings):
         return v
 
     # Google Sheets
-    google_sheets_id: str = Field(..., alias="GOOGLE_SHEETS_ID")
+    google_sheets_id: str | None = Field(None, alias="GOOGLE_SHEETS_ID")
     google_sheets_worksheet: str = Field("Leads", alias="GOOGLE_SHEETS_WORKSHEET")
-    # Service account: either JSON string from env var OR file path
+    # Service account (legacy - kept for backwards compat, can be removed once fully on OAuth)
     google_service_account_json: str | None = Field(None, alias="GOOGLE_SERVICE_ACCOUNT_JSON")
     google_service_account_file: str | None = Field(None, alias="GOOGLE_SERVICE_ACCOUNT_FILE")
+    
+    # Google OAuth (for per-user authentication)
+    google_client_id: str | None = Field(None, alias="GOOGLE_CLIENT_ID")
+    google_client_secret: str | None = Field(None, alias="GOOGLE_CLIENT_SECRET")
+    google_redirect_uri: str = Field("http://localhost:8000/auth/google/callback", alias="GOOGLE_REDIRECT_URI")
+    frontend_url: str = Field("http://localhost:3000/settings", alias="FRONTEND_URL")
 
     # Gemini
     gemini_api_key: str = Field(..., alias="GEMINI_API_KEY")

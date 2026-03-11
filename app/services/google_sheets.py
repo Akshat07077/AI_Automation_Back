@@ -3,10 +3,11 @@ import json
 import os
 
 import gspread
-from google.oauth2.service_account import Credentials
+from google.oauth2.credentials import Credentials
+from google.auth.exceptions import RefreshError
 
 from app.core.config import get_settings
-
+from app.models.user import User
 
 settings = get_settings()
 
@@ -17,67 +18,31 @@ SCOPES = [
 ]
 
 
-def get_gspread_client() -> gspread.Client:
+def get_gspread_client(user: User) -> gspread.Client:
     """
-    Get gspread client using service account credentials.
-    Supports both JSON from environment variable and file path.
+    Get gspread client using the authenticated user's OAuth tokens.
     """
-    # Priority: 1. JSON from env var, 2. File path
-    if settings.google_service_account_json:
-        # Parse JSON from environment variable
-        try:
-            service_account_info = json.loads(settings.google_service_account_json)
-            
-            # Validate required fields
-            if "private_key" not in service_account_info:
-                raise ValueError(
-                    "Service account JSON missing 'private_key' field. "
-                    "Please check your GOOGLE_SERVICE_ACCOUNT_JSON."
-                )
-            if "client_email" not in service_account_info:
-                raise ValueError(
-                    "Service account JSON missing 'client_email' field. "
-                    "Please check your GOOGLE_SERVICE_ACCOUNT_JSON."
-                )
-            
-            creds = Credentials.from_service_account_info(
-                service_account_info,
-                scopes=SCOPES,
-            )
-            print(f"✅ Service account credentials loaded from JSON")
-        except json.JSONDecodeError as e:
-            raise ValueError(
-                f"Invalid JSON in GOOGLE_SERVICE_ACCOUNT_JSON: {str(e)}\n"
-                f"Make sure the JSON is valid and properly formatted."
-            )
-        except Exception as e:
-            # Catch any other credential errors
-            error_type = type(e).__name__
-            raise ValueError(
-                f"Failed to create credentials from JSON: {error_type}: {str(e)}\n"
-                f"Check that your service account JSON is complete and correct."
-            )
-    elif settings.google_service_account_file:
-        # Use file path
-        if not os.path.exists(settings.google_service_account_file):
-            raise FileNotFoundError(
-                f"Service account file not found: {settings.google_service_account_file}"
-            )
-        creds = Credentials.from_service_account_file(
-            settings.google_service_account_file,
-            scopes=SCOPES,
-        )
-    else:
-        raise ValueError(
-            "Either GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_FILE must be set"
-        )
+    if not user.google_access_token or not user.google_refresh_token:
+        raise ValueError("User has not connected their Google account.")
+
+    # These must be set in your .env or Config for the token refresh to work automatically
+    client_id = getattr(settings, "google_client_id", "")
+    client_secret = getattr(settings, "google_client_secret", "")
+
+    creds = Credentials(
+        token=user.google_access_token,
+        refresh_token=user.google_refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=client_id,
+        client_secret=client_secret
+    )
     
     return gspread.authorize(creds)
 
 
-def fetch_leads_from_sheet() -> Iterable[dict]:
+def fetch_leads_from_sheet(user: User, sheet_id: str) -> Iterable[dict]:
     """
-    Reads all rows from the configured Google Sheet worksheet and yields dicts.
+    Reads all rows from the selected Google Sheet worksheet and yields dicts.
 
     Supports multiple column name formats (case-insensitive):
       - founder_name, Founder_Name, "Founder Name"
@@ -87,31 +52,31 @@ def fetch_leads_from_sheet() -> Iterable[dict]:
       - website, Website
       - observation, Observation
     """
-    client = get_gspread_client()
+    if not sheet_id:
+        raise ValueError("No Google Sheet selected. Please select one in Settings.")
+
+    try:
+        client = get_gspread_client(user)
+    except Exception as e:
+        raise ValueError(f"Failed to authorize with Google: {str(e)}")
     
     try:
-        sheet = client.open_by_key(settings.google_sheets_id)
+        sheet = client.open_by_key(sheet_id)
     except gspread.exceptions.SpreadsheetNotFound:
         raise ValueError(
             f"Google Sheet not found. Please check:\n"
-            f"1. Sheet ID is correct: {settings.google_sheets_id}\n"
-            f"2. Sheet is shared with service account: ai-auto@robust-chess-427018-j2.iam.gserviceaccount.com\n"
-            f"3. Service account has 'Viewer' access to the sheet"
+            f"1. Sheet ID is correct.\n"
+            f"2. Note: You must select a new sheet in the Dashboard Settings since auth changed."
         )
     except gspread.exceptions.APIError as e:
         status_code = e.response.status_code if hasattr(e, 'response') and e.response else None
         if status_code == 403:
             raise ValueError(
-                f"Permission denied. Please:\n"
-                f"1. Share the sheet with the service account email\n"
-                f"2. Give it 'Viewer' access\n"
-                f"3. Make sure Google Sheets API is enabled in your project"
+                f"Permission denied. Make sure your Google account has access to the sheet."
             )
         elif status_code == 404:
             raise ValueError(
-                f"Google Sheet not found. Please check:\n"
-                f"1. Sheet ID is correct: {settings.google_sheets_id}\n"
-                f"2. Sheet exists and is accessible"
+                f"Google Sheet not found."
             )
         else:
             # Convert other API errors to ValueError for better error handling

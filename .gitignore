@@ -5,6 +5,22 @@
 # Google Service Account credentials (NEVER commit this!)
 service_account.json
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
 # Other sensitive JSON files (but allow config files)
 *.json
 !package.json
