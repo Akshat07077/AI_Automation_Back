@@ -1,4 +1,4 @@
-import smtplib
+import requests
 from email.message import EmailMessage
 from email.utils import make_msgid
 
@@ -56,14 +56,54 @@ def send_email(to_email: str, subject: str, body: str, in_reply_to: str | None =
     
     msg.set_content(body)
 
+    # If Resend API Key is provided, use it (recommended for production)
+    if settings.resend_api_key:
+        try:
+            # Generate Message-ID for tracking
+            message_id = make_msgid()
+            
+            headers = {
+                "Authorization": f"Bearer {settings.resend_api_key}",
+                "Content-Type": "application/json",
+            }
+            
+            payload = {
+                "from": settings.email_from,
+                "to": to_email,
+                "subject": f"Re: {subject}" if in_reply_to and not subject.lower().startswith("re:") else subject,
+                "text": body,
+                "headers": {
+                    "X-Entity-Ref-ID": message_id,
+                }
+            }
+            
+            if in_reply_to:
+                payload["headers"]["In-Reply-To"] = in_reply_to
+                payload["headers"]["References"] = references or in_reply_to
+
+            response = requests.post(
+                "https://api.resend.com/emails",
+                headers=headers,
+                json=payload,
+                timeout=10
+            )
+            
+            if not response.ok:
+                raise Exception(f"Resend API error: {response.text}")
+            
+            return message_id
+            
+        except Exception as e:
+            print(f"Resend API failed: {str(e)}. Falling back to SMTP.")
+
+    # Fallback to SMTP
+    import smtplib
     try:
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
             server.starttls()
             server.login(settings.smtp_username, settings.smtp_password)
             server.send_message(msg)
-            
-            # Return the Message-ID
-            return message_id
+            return msg["Message-ID"]
     except smtplib.SMTPAuthenticationError as e:
         error_msg = str(e)
         if "BadCredentials" in error_msg or "535" in error_msg:

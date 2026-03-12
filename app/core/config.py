@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     telegram_bot_token: str = Field(..., alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str = Field(..., alias="TELEGRAM_CHAT_ID")
 
+    # Resend (for production email)
+    resend_api_key: str | None = Field(None, alias="RESEND_API_KEY")
+
     # IMAP polling
     imap_poll_interval_seconds: int = Field(
         60, alias="IMAP_POLL_INTERVAL_SECONDS"
