@@ -2,10 +2,11 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.lead import Lead
+from app.models.user import User
 from app.models.outreach_log import OutreachEventType, OutreachLog
 from app.services.gemini_email import generate_outreach_email
-from app.services.smtp_email import send_email
+from app.services.gmail_email import send_gmail_email
+from sqlalchemy import select
 
 
 async def resend_email_to_lead(lead: Lead, db: AsyncSession) -> dict:
@@ -17,8 +18,15 @@ async def resend_email_to_lead(lead: Lead, db: AsyncSession) -> dict:
         # Generate new email (will be personalized based on current lead data)
         subject, body = generate_outreach_email(lead)
         
-        # Send email
-        message_id = send_email(lead.email, subject, body)
+        # Fetch user for credentials
+        user_result = await db.execute(select(User).limit(1))
+        user = user_result.scalar_first()
+        
+        if not user or not user.gmail_access_token:
+            return {"success": False, "message": "Gmail not connected. Please connect Gmail in Settings."}
+
+        # Send email via Gmail API
+        message_id = send_gmail_email(user, lead.email, subject, body)
         
         # Update last contacted time
         lead.last_contacted = datetime.now(timezone.utc)

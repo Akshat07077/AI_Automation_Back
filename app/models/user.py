@@ -20,9 +20,19 @@ class User(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )
     
-    # Google OAuth fields
+    # Google OAuth fields (Legacy/Sheets)
     google_access_token: Mapped[str | None] = mapped_column(String, nullable=True)
     google_refresh_token: Mapped[str | None] = mapped_column(String, nullable=True)
     token_expiry: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     google_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     google_sheet_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Gmail API fields
+    gmail_access_token: Mapped[str | None] = mapped_column(String, nullable=True)
+    gmail_refresh_token: Mapped[str | None] = mapped_column(String, nullable=True)
+    gmail_token_expiry: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    gmail_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    
+    # Outreach limits
+    daily_send_limit: Mapped[int] = mapped_column(default=25, nullable=False)
+    delay_between_emails_seconds: Mapped[int] = mapped_column(default=60, nullable=False)

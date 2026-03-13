@@ -17,10 +17,14 @@ settings = get_settings()
 
 router = APIRouter(tags=["google_auth"])
 
-# Using the explicit required scopes
+# Using the explicit required scopes for Gmail and Sheets
 SCOPES = [
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/spreadsheets.readonly",
     "https://www.googleapis.com/auth/drive.metadata.readonly",
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
 ]
 
 def get_google_flow() -> Flow:
@@ -39,7 +43,6 @@ def get_google_flow() -> Flow:
             "token_uri": "https://oauth2.googleapis.com/token",
             "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
             "client_secret": settings.google_client_secret,
-            # We redirect back to our backend
             "redirect_uris": [getattr(settings, "google_redirect_uri", "http://localhost:8000/auth/google/callback")],
         }
     }
@@ -54,12 +57,10 @@ def get_google_flow() -> Flow:
 # Dummy user auth dependency since there is no JWT setup yet in the codebase.
 # We will lookup the single user or first user for demo purposes if not provided an auth token.
 async def get_current_user(db: AsyncSession = Depends(get_db)) -> User:
-    # In a real SaaS with JWT, you'd decode the token and query the user.
-    # For this migration step, let's just grab the first user in the DB
+    # For this migration step, grab the first user in the DB
     result = await db.execute(select(User).limit(1))
     user = result.scalar_first()
     if not user:
-        # Create a dummy user for testing
         user = User(
             username="test_founder",
             password_hash="fake_hash"
@@ -77,36 +78,45 @@ async def login_google():
     authorization_url, state = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
-        prompt="consent" # Force consent to ensure we get a refresh token
+        prompt="consent" 
     )
     return RedirectResponse(authorization_url)
 
 
 @router.get("/auth/google/callback")
 async def auth_google_callback(request: Request, code: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Handles the OAuth callback, exchanges code for tokens, and saves them to the user log."""
-    # We retrieve the "current user" who initiated this request
-    
+    """Handles the OAuth callback, exchanges code for tokens, and saves them."""
     try:
         flow = get_google_flow()
         flow.fetch_token(code=code)
         credentials = flow.credentials
         
-        # Save tokens to database
+        # Save tokens to both legacy and gmail fields to ensure compatibility
         user.google_access_token = credentials.token
-        user.google_refresh_token = credentials.refresh_token
+        user.gmail_access_token = credentials.token
+        
+        if credentials.refresh_token:
+            user.google_refresh_token = credentials.refresh_token
+            user.gmail_refresh_token = credentials.refresh_token
         
         if credentials.expiry:
-            # credentials.expiry is a datetime object in UTC context
-            user.token_expiry = credentials.expiry.replace(tzinfo=timezone.utc)
+            expiry_utc = credentials.expiry.replace(tzinfo=timezone.utc)
+            user.token_expiry = expiry_utc
+            user.gmail_token_expiry = expiry_utc
             
-        # Optional: we can fetch the user's email using a different scope or just leave it empty 
-        # unless userinfo scope is added. For now we will mark as connected.
-        user.google_email = "connected@oauth.com" # Placeholder
+        # Fetch user's email using the userinfo service
+        try:
+            service = build('oauth2', 'v2', credentials=credentials)
+            user_info = service.userinfo().get().execute()
+            user.google_email = user_info.get('email')
+            user.gmail_email = user_info.get('email')
+        except Exception as info_err:
+            print(f"Warning: Failed to fetch user info: {info_err}")
+            user.google_email = "connected-user@gmail.com"
+            user.gmail_email = "connected-user@gmail.com"
         
         await db.commit()
         
-        # Redirect back to the frontend settings page
         frontend_url = getattr(settings, "frontend_url", "http://localhost:3000/settings")
         return RedirectResponse(f"{frontend_url}?google_auth_success=true")
 
@@ -154,11 +164,21 @@ async def select_google_sheet(request: SelectSheetRequest, user: User = Depends(
     await db.commit()
     return {"message": "Sheet selected successfully.", "sheet_id": user.google_sheet_id}
 
-@router.get("/users/me/google-status")
-async def get_google_integration_status(user: User = Depends(get_current_user)):
-    """Returns the Google OAuth connection status for the frontend settings page."""
-    return {
-        "is_connected": bool(user.google_access_token),
-        "email": user.google_email,
-        "sheet_id": user.google_sheet_id
-    }
+class UserSettingsUpdate(BaseModel):
+    daily_send_limit: int | None = None
+    delay_between_emails_seconds: int | None = None
+
+@router.post("/users/me/settings")
+async def update_user_settings(
+    settings_update: UserSettingsUpdate, 
+    user: User = Depends(get_current_user), 
+    db: AsyncSession = Depends(get_db)
+):
+    """Updates the user's outreach settings."""
+    if settings_update.daily_send_limit is not None:
+        user.daily_send_limit = settings_update.daily_send_limit
+    if settings_update.delay_between_emails_seconds is not None:
+        user.delay_between_emails_seconds = settings_update.delay_between_emails_seconds
+    
+    await db.commit()
+    return {"message": "Settings updated successfully"}

@@ -10,8 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.lead import Lead, LeadStatus
+from app.models.user import User
 from app.models.outreach_log import OutreachEventType, OutreachLog
 from app.services.telegram import send_telegram_message
+from app.services.gmail_email import get_gmail_credentials
+from googleapiclient.discovery import build
 
 
 settings = get_settings()
@@ -27,51 +30,62 @@ def _decode_mime_words(s: str) -> str:
     )
 
 
-def fetch_recent_replies() -> Iterable[tuple[str, str]]:
+def fetch_gmail_replies(user: User) -> Iterable[tuple[str, str]]:
     """
-    Returns an iterable of (email_address, subject) for new replies/bounces.
-    This is a naive implementation that looks at the INBOX for unseen messages.
+    Returns an iterable of (email_address, subject) for new replies/bounces using Gmail API.
     """
     results: list[tuple[str, str]] = []
-    mail = imaplib.IMAP4_SSL(settings.imap_host, settings.imap_port)
     try:
-        mail.login(settings.imap_username, settings.imap_password)
-        mail.select("INBOX")
+        creds = get_gmail_credentials(user)
+        service = build('gmail', 'v1', credentials=creds)
 
-        typ, data = mail.search(None, "UNSEEN")
-        if typ != "OK":
-            return results
+        # Search for unread messages in the inbox
+        response = service.users().messages().list(userId='me', q='is:unread label:INBOX').execute()
+        messages = response.get('messages', [])
 
-        for num in data[0].split():
-            typ, msg_data = mail.fetch(num, "(RFC822)")
-            if typ != "OK":
-                continue
-            msg = email.message_from_bytes(msg_data[0][1])
-            from_header = msg.get("From", "")
-            subject = msg.get("Subject", "")
-            subject = _decode_mime_words(subject)
+        for msg_meta in messages:
+            msg = service.users().messages().get(userId='me', id=msg_meta['id']).execute()
+            headers = msg.get('payload', {}).get('headers', [])
+            
+            from_email = ""
+            subject = ""
+            
+            for header in headers:
+                if header['name'].lower() == 'from':
+                    from_email = email.utils.parseaddr(header['value'])[1]
+                if header['name'].lower() == 'subject':
+                    subject = header['value']
+            
+            if from_email:
+                results.append((from_email.lower(), subject))
+                
+                # Mark as read (optional, but good practice so we don't process again)
+                service.users().messages().batchModify(
+                    userId='me',
+                    body={
+                        'ids': [msg_meta['id']],
+                        'removeLabelIds': ['UNREAD']
+                    }
+                ).execute()
 
-            # Extract email address from "Name <email>"
-            addr = email.utils.parseaddr(from_header)[1]
-            if not addr:
-                continue
-
-            results.append((addr.lower(), subject))
-
-    finally:
-        try:
-            mail.logout()
-        except Exception:
-            pass
+    except Exception as e:
+        print(f"Error fetching Gmail replies: {e}")
 
     return results
 
 
 async def process_imap_replies(db: AsyncSession) -> None:
     """
-    Check IMAP for new replies/bounces and update leads/logs.
+    Check Gmail API for new replies/bounces (reusing name for compatibility with main loop).
     """
-    events = list(fetch_recent_replies())
+    # Fetch user for Gmail credentials
+    user_result = await db.execute(select(User).limit(1))
+    user = user_result.scalar_one_or_none() # Changed from scalar_first() to scalar_one_or_none() for robustness
+    
+    if not user or not user.gmail_access_token:
+        return
+
+    events = list(fetch_gmail_replies(user))
     if not events:
         return
 

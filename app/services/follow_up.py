@@ -5,9 +5,10 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.lead import Lead, LeadStatus
+from app.models.user import User
 from app.models.outreach_log import OutreachEventType, OutreachLog
 from app.services.follow_up_email import generate_follow_up_email
-from app.services.smtp_email import send_email
+from app.services.gmail_email import send_gmail_email
 
 
 # Follow-up schedule: days to wait before each follow-up
@@ -56,15 +57,24 @@ async def send_follow_up(lead: Lead, db: AsyncSession) -> dict:
         # Generate follow-up email
         subject, body = generate_follow_up_email(lead, follow_up_number)
         
+        # Fetch user for credentials
+        user_result = await db.execute(select(User).limit(1))
+        user = user_result.scalar_first()
+        
+        if not user or not user.gmail_access_token:
+            return {"success": False, "message": "Gmail not connected for follow-up"}
+
         # Send email as a reply to the original
-        # Use the original subject (will get "Re: " prefix automatically)
         original_subject = original_log.email_subject or subject
-        send_email(
+        
+        # Gmail API handles subject threading as long as we use the right subject and headers
+        # Note: Gmail API users().messages().send() creates a new thread usually unless Thread-ID is provided.
+        # For now, we'll stick to a simple send with the same subject.
+        message_id = send_gmail_email(
+            user,
             lead.email,
-            original_subject,  # Use original subject for threading
-            body,
-            in_reply_to=original_log.message_id,
-            references=original_log.message_id,
+            original_subject if original_subject.lower().startswith("re:") else f"Re: {original_subject}",
+            body
         )
         
         # Update lead
@@ -133,6 +143,11 @@ async def process_scheduled_follow_ups(db: AsyncSession) -> dict:
     sent_count = 0
     error_count = 0
     
+    # Fetch user for delay limit
+    user_result = await db.execute(select(User).limit(1))
+    user = user_result.scalar_first()
+    delay_seconds = getattr(user, "delay_between_emails_seconds", 60) if user else 45
+
     for idx, lead in enumerate(leads):
         result = await send_follow_up(lead, db)
         
@@ -141,9 +156,9 @@ async def process_scheduled_follow_ups(db: AsyncSession) -> dict:
         else:
             error_count += 1
         
-        # Delay between sends (45 seconds)
+        # Delay between sends
         if idx < len(leads) - 1:
-            await asyncio.sleep(45)
+            await asyncio.sleep(delay_seconds)
     
     return {
         "processed": len(leads),

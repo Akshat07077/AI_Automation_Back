@@ -64,18 +64,18 @@ class Settings(BaseSettings):
     gemini_api_key: str = Field(..., alias="GEMINI_API_KEY")
     gemini_model: str = Field("gemini-1.5-flash", alias="GEMINI_MODEL")
 
-    # SMTP
-    smtp_host: str = Field(..., alias="SMTP_HOST")
+    # SMTP (Legacy - kept as optional)
+    smtp_host: str | None = Field(None, alias="SMTP_HOST")
     smtp_port: int = Field(587, alias="SMTP_PORT")
-    smtp_username: str = Field(..., alias="SMTP_USERNAME")
-    smtp_password: str = Field(..., alias="SMTP_PASSWORD")
-    email_from: str = Field(..., alias="EMAIL_FROM")
+    smtp_username: str | None = Field(None, alias="SMTP_USERNAME")
+    smtp_password: str | None = Field(None, alias="SMTP_PASSWORD")
+    email_from: str = Field("Akshat Sharma <akshatsharmadev07@gmail.com>", alias="EMAIL_FROM")
 
-    # IMAP
-    imap_host: str = Field(..., alias="IMAP_HOST")
+    # IMAP (Legacy - kept as optional)
+    imap_host: str | None = Field(None, alias="IMAP_HOST")
     imap_port: int = Field(993, alias="IMAP_PORT")
-    imap_username: str = Field(..., alias="IMAP_USERNAME")
-    imap_password: str = Field(..., alias="IMAP_PASSWORD")
+    imap_username: str | None = Field(None, alias="IMAP_USERNAME")
+    imap_password: str | None = Field(None, alias="IMAP_PASSWORD")
 
     # Telegram
     telegram_bot_token: str = Field(..., alias="TELEGRAM_BOT_TOKEN")

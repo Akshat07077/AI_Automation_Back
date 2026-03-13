@@ -2,8 +2,14 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 
 from app.services.gemini_email import generate_outreach_email
-from app.services.smtp_email import send_email
+from app.services.gmail_email import send_gmail_email
+from app.api.routes.google_auth import get_current_user
+from app.models.user import User
 from app.models.lead import Lead, LeadStatus
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.db.session import get_db
+from sqlalchemy import select
 from datetime import datetime, timezone
 
 router = APIRouter(tags=["test"])
@@ -19,13 +25,16 @@ class TestEmailRequest(BaseModel):
 
 
 @router.post("/test-email")
-async def test_email(request: TestEmailRequest) -> dict:
+async def test_email(
+    request: TestEmailRequest, 
+    user: User = Depends(get_current_user)
+) -> dict:
     """
-    Test endpoint to verify Gemini email generation and SMTP sending.
+    Test endpoint to verify Gemini email generation and Gmail API sending.
     
     This creates a mock lead and:
     1. Generates an email using Gemini
-    2. Sends it via SMTP
+    2. Sends it via Gmail API
     
     Use this to test your email configuration.
     """
@@ -54,13 +63,13 @@ async def test_email(request: TestEmailRequest) -> dict:
                 detail=f"Failed to generate email with Gemini: {str(e)}. Check your GEMINI_API_KEY."
             )
         
-        # Step 2: Send email via SMTP
+        # Step 2: Send email via Gmail API
         try:
-            send_email(request.to_email, subject, body)
+            send_gmail_email(user, request.to_email, subject, body)
         except Exception as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to send email via SMTP: {str(e)}. Check your SMTP credentials (SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD)."
+                detail=f"Failed to send email via Gmail API: {str(e)}. Make sure your Gmail is connected in Settings."
             )
         
         return {
@@ -116,30 +125,31 @@ async def test_gemini() -> dict:
         )
 
 
-@router.get("/test-smtp")
-async def test_smtp() -> dict:
+@router.get("/test-gmail")
+async def test_gmail(
+    user: User = Depends(get_current_user)
+) -> dict:
     """
-    Test endpoint to verify SMTP connection.
-    Note: This will attempt to send a test email to the SMTP_USERNAME email.
+    Test endpoint to verify Gmail API connection.
+    Note: This will attempt to send a test email to your own Gmail address.
     """
     try:
-        from app.core.config import get_settings
-        
-        settings = get_settings()
         test_subject = "Test Email from AI Outreach Automation"
-        test_body = "This is a test email to verify SMTP configuration is working correctly."
+        test_body = "This is a test email to verify Gmail API configuration is working correctly."
         
-        # Send test email to yourself
-        send_email(settings.smtp_username, test_subject, test_body)
+        if not user.gmail_email:
+            raise ValueError("Gmail account not connected.")
+            
+        send_gmail_email(user, user.gmail_email, test_subject, test_body)
         
         return {
             "success": True,
-            "message": f"Test email sent to {settings.smtp_username}",
-            "note": "Check your inbox (and spam folder) for the test email.",
+            "message": f"Test email sent to {user.gmail_email}",
+            "note": "Check your inbox (and sent folder) for the test email.",
         }
     
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"SMTP test failed: {str(e)}. Check your SMTP credentials (SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, EMAIL_FROM) in .env"
+            detail=f"Gmail API test failed: {str(e)}. Make sure you have connected your Gmail in Settings."
         )
